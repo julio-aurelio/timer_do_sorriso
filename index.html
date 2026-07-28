@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⏰ Timer do Sorriso</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TensorFlow.js e FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/facemesh"></script>
+    <style>
+        .card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        #video-frame { 
+            background: #1a1a1a; 
+            min-height: 350px; 
+            max-height: 500px; 
+            object-fit: cover;
+            transform: scaleX(-1);
+            width: 100%;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.active { background: #10b981; box-shadow: 0 0 10px #10b981; }
+        .status-dot.inactive { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .hidden { display: none !important; }
+        
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #loadingOverlay.show { display: flex; }
+        .loading-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 400px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .timer-text {
+            font-size: 4rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        #detection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .video-container {
+            position: relative;
+            background: #1a1a1a;
+            min-height: 350px;
+            overflow: hidden;
+        }
+
+        #perguntaOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(10px);
+        }
+        #perguntaOverlay.show { display: flex; }
+        .pergunta-box {
+            background: white;
+            border-radius: 2rem;
+            padding: 3rem;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            animation: fadeInUp 0.5s ease-out;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .pergunta-box .emoji { font-size: 4rem; display: block; margin-bottom: 0.5rem; }
+        .pergunta-box .pergunta-texto { font-size: 1.5rem; font-weight: 600; color: #1a1a1a; margin-bottom: 0.5rem; }
+        .pergunta-box .dica-texto { color: #6b7280; font-size: 0.95rem; margin-bottom: 1.5rem; }
+        .pergunta-box .input-resposta {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.75rem;
+            font-size: 1.1rem;
+            transition: border-color 0.3s;
+            outline: none;
+        }
+        .pergunta-box .input-resposta:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .pergunta-box .btn-enviar {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .pergunta-box .btn-enviar:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3); }
+        .pergunta-box .btn-enviar:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .pergunta-box .tentativas { color: #6b7280; font-size: 0.9rem; margin-top: 0.75rem; }
+        .pergunta-box .status-som {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            animation: pulse-som 1.5s infinite;
+        }
+        .status-som.tocando { background: #fee2e2; color: #dc2626; }
+        .status-som.parado { background: #d1fae5; color: #059669; animation: none; }
+        @keyframes pulse-som { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .progresso-perguntas {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .progresso-perguntas .bolinha {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+        .progresso-perguntas .bolinha.ativa {
+            background: #3b82f6;
+            color: white;
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+        .progresso-perguntas .bolinha.concluida {
+            background: #10b981;
+            color: white;
+        }
+        .progresso-perguntas .bolinha.pendente {
+            background: #e5e7eb;
+            color: #6b7280;
+        }
+        .progresso-perguntas .bolinha.erro {
+            background: #ef4444;
+            color: white;
+            animation: shake 0.5s;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        
+        .suspense-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            font-size: 0.9rem;
+            z-index: 20;
+            animation: pulse-suspense 0.5s infinite;
+            display: none;
+        }
+        @keyframes pulse-suspense {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); background: rgba(200, 0, 0, 0.9); }
+        }
+        .suspense-indicator.show { display: block; }
+        
+        .expressao-detectada {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 1.2rem;
+            z-index: 15;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
+    <!-- Loading -->
+    <div id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <h3 class="text-lg font-bold text-gray-800">Carregando...</h3>
+            <p class="text-gray-600 text-sm" id="loadingMessage">Inicializando sistema</p>
+        </div>
+    </div>
+
+    <!-- PERGUNTA OVERLAY -->
+    <div id="perguntaOverlay">
+        <div class="pergunta-box">
+            <span class="emoji" id="perguntaEmoji">🤔</span>
+            <div class="progresso-perguntas" id="progressoPerguntas">
+                <div class="bolinha ativa" data-index="0">1</div>
+                <div class="bolinha pendente" data-index="1">2</div>
+                <div class="bolinha pendente" data-index="2">3</div>
+                <div class="bolinha pendente" data-index="3">4</div>
+            </div>
+            <div class="status-som tocando" id="statusSomPergunta">🔊 SOM TOCANDO</div>
+            <p class="pergunta-texto" id="perguntaTextoOverlay">Qual a capital do Brasil?</p>
+            <p class="dica-texto" id="dicaTextoOverlay">💡 Dica: Começa com B</p>
+            <input type="text" id="respostaInputOverlay" class="input-resposta" placeholder="Digite sua resposta..." autofocus>
+            <button onclick="enviarRespostaOverlay()" id="btnEnviarOverlay" class="btn-enviar">✅ Enviar Resposta</button>
+            <p class="tentativas" id="tentativasOverlay">📝 Pergunta 1 de 4</p>
+            <p class="erro" id="erroOverlay" style="color: #dc2626; font-size: 0.9rem; margin-top: 0.5rem; display: none;">❌ Resposta errada! Timer vai reiniciar...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                ⏰ Timer do Sorriso
+            </h1>
+            <p class="text-gray-600">Faça expressões e responda 4 perguntas para desligar o alarme!</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Coluna Esquerda -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="bg-white rounded-2xl shadow-xl overflow-hidden card">
+                    <div class="p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xl">📷</span>
+                            <span class="font-semibold text-gray-700">Webcam</span>
+                            <span class="status-dot inactive" id="cameraStatus"></span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span id="expressaoDisplay" class="text-sm font-medium px-3 py-1 rounded-full bg-gray-200 text-gray-700">
+                                😐 NEUTRO
+                            </span>
+                        </div>
+                    </div>
+                    <div class="video-container">
+                        <video id="video-frame" autoplay playsinline muted></video>
+                        <canvas id="detection-canvas"></canvas>
+                        
+                        <!-- Expressão detectada -->
+                        <div class="expressao-detectada" id="expressaoDetectada">😐 NEUTRO</div>
+                        
+                        <div id="suspenseIndicator" class="suspense-indicator">
+                            🎵 SUSPENSE ATIVADO!
+                        </div>
+                        
+                        <div id="targetOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80 hidden z-10">
+                            <div class="text-white text-center">
+                                <div class="text-6xl mb-2" id="targetEmoji">🎯</div>
+                                <div class="text-2xl font-bold mb-1" id="targetName">EXPRESSÃO ALVO</div>
+                                <div class="text-sm text-gray-300" id="targetDica">💡 Faça esta expressão por 5 segundos</div>
+                                <div class="mt-4 w-64 mx-auto">
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span>Tempo:</span>
+                                        <span id="targetTime">0/5s</span>
+                                    </div>
+                                    <div class="w-full bg-gray-700 rounded-full h-3">
+                                        <div id="targetBar" class="bg-green-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="timerOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 hidden z-10">
+                            <div class="text-white text-center">
+                                <div class="timer-text" id="timerDisplay">00:00</div>
+                                <div class="text-sm mt-2">⏱️ Tempo Restante</div>
+                            </div>
+                        </div>
+                        
+                        <div id="smileOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80 hidden z-10">
+                            <div class="text-white text-center">
+                                <div class="text-6xl mb-2">😊</div>
+                                <div class="text-2xl font-bold mb-1">SORRIA!</div>
+                                <div class="text-sm text-gray-300">Mantenha o sorriso por 3 segundos</div>
+                                <div class="mt-4 w-64 mx-auto">
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span>Progresso:</span>
+                                        <span id="smileTime">0/3s</span>
+                                    </div>
+                                    <div class="w-full bg-gray-700 rounded-full h-3">
+                                        <div id="smileBar" class="bg-green-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="bg-white rounded-2xl shadow-xl p-4 card">
+                    <div class="grid grid-cols-4 gap-4">
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 font-medium">Etapa</p>
+                            <p class="text-sm font-bold text-gray-800" id="etapaDisplay">⏸️ INICIAL</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 font-medium">Expressão</p>
+                            <p class="text-sm font-bold text-gray-800" id="expressaoAtualDisplay">😐</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 font-medium">Tempo</p>
+                            <p class="text-sm font-bold text-gray-800" id="tempoDisplay">--</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs text-gray-500 font-medium">Som</p>
+                            <p class="text-sm font-bold text-gray-800" id="somDisplay">🔇</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna Direita -->
+            <div class="space-y-4">
+                <div class="bg-white rounded-2xl shadow-xl p-6 card">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">🎮 Controles</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Selecione o Tempo
+                            </label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="setTimer(30)" class="btn-tempo px-3 py-2 rounded-lg border-2 border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm" data-tempo="30">
+                                    30s
+                                </button>
+                                <button onclick="setTimer(60)" class="btn-tempo px-3 py-2 rounded-lg border-2 border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm" data-tempo="60">
+                                    60s
+                                </button>
+                                <button onclick="setTimer(300)" class="btn-tempo px-3 py-2 rounded-lg border-2 border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm" data-tempo="300">
+                                    5min
+                                </button>
+                                <button onclick="setTimer(900)" class="btn-tempo px-3 py-2 rounded-lg border-2 border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm" data-tempo="900">
+                                    15min
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Tempo Personalizado
+                            </label>
+                            <div class="flex gap-2">
+                                <input type="number" id="customTime" value="30" min="1" max="3600" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <span class="flex items-center text-gray-500 text-sm">s</span>
+                            </div>
+                        </div>
+
+                        <button onclick="iniciarTimer()" id="btnIniciar" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all">
+                            🚀 Iniciar Timer
+                        </button>
+
+                        <button onclick="pararTimer()" id="btnParar" class="w-full bg-red-500 text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all">
+                            ⏹️ Parar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mensagem -->
+                <div id="mensagemCard" class="bg-white rounded-2xl shadow-xl p-4 card hidden">
+                    <div class="text-center">
+                        <div id="mensagemIcon" class="text-3xl mb-1">💡</div>
+                        <p id="mensagemTexto" class="text-gray-800 font-medium">Mensagem</p>
+                        <p id="mensagemDetalhe" class="text-sm text-gray-500">Detalhes</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-6 text-gray-400 text-sm">
+            <p>Desenvolvido com ❤️ usando TensorFlow.js + FaceMesh</p>
+        </div>
+    </div>
+
+    <audio id="suspenseAudio" preload="auto" style="display:none;">
+        <source src="MP3Now.com_YouTube_Tema-de-suspense-e-terror-Tema-do-filme-_Media_BWm7cpHv1ZU_006_128k.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // ============================================
+        // CONFIGURAÇÕES
+        // ============================================
+        const PERGUNTAS = [
+            { id: 1, pergunta: "Qual a capital do Brasil?", respostas: ["brasilia", "brasília"], dica: "Começa com B" },
+            { id: 2, pergunta: "Quantos planetas tem no sistema solar?", respostas: ["8", "oito"], dica: "É um número par" },
+            { id: 3, pergunta: "Qual o maior oceano do mundo?", respostas: ["pacífico", "pacifico"], dica: "Começa com P" },
+            { id: 4, pergunta: "Em que ano o homem pisou na lua?", respostas: ["1969"], dica: "Termina com 69" },
+            { id: 5, pergunta: "Qual a fórmula da água?", respostas: ["h2o", "H2O"], dica: "2 hidrogênios e 1 oxigênio" },
+            { id: 6, pergunta: "Qual é o maior planeta do sistema solar?", respostas: ["júpiter", "jupiter"], dica: "Começa com J" },
+            { id: 7, pergunta: "Qual a montanha mais alta do mundo?", respostas: ["monte everest", "Everest"], dica: "Está no Himalaia" },
+            { id: 8, pergunta: "Qual o país mais populoso do mundo?", respostas: ["índia", "india"], dica: "Fica na Ásia" },
+            { id: 9, pergunta: "Qual a moeda oficial dos Estados Unidos?", respostas: ["dólar", "dolar"], dica: "Começa com D" },
+            { id: 10, pergunta: "Qual a língua mais falada do mundo?", respostas: ["mandarim", "chinês"], dica: "É da China" },
+            { id: 11, pergunta: "Quanto é 7 x 8?", respostas: ["56"], dica: "É um número par" },
+            { id: 12, pergunta: "Qual a cor do céu em um dia limpo?", respostas: ["azul"], dica: "É a cor do mar" },
+            { id: 13, pergunta: "Qual o animal mais rápido do mundo?", respostas: ["chita", "guepardo"], dica: "Vive na África" },
+            { id: 14, pergunta: "Qual a capital da França?", respostas: ["paris"], dica: "Cidade do amor" },
+            { id: 15, pergunta: "Qual a estação do ano mais quente?", respostas: ["verão", "verao"], dica: "Faz calor" }
+        ];
+
+        const EXPRESSOES = {
+            "FELIZ": { emoji: "😊", dica: "SORRIA mostrando os dentes!" },
+            "BRAVO": { emoji: "😠", dica: "FRANZA A TESTA e aperte os olhos!" },
+            "TRISTE": { emoji: "😢", dica: "ABRA BEM OS OLHOS e faça boca de triste!" }
+        };
+
+        // ============================================
+        // ESTADO
+        // ============================================
+        const state = {
+            etapa: "INICIAL",
+            tempo_total: 30,
+            tempo_restante: 30,
+            expressao_alvo: null,
+            expressao_atual: "NEUTRO",
+            tempo_expressao_inicio: 0,
+            tempo_necessario_expressao: 5,
+            tempo_sorriso_inicio: 0,
+            tempo_necessario_sorriso: 3,
+            timer_ativo: false,
+            camera_ativa: false,
+            som_tocando: false,
+            suspense_tocando: false,
+            timer_interval: null,
+            audio_context: null,
+            detectando: false,
+            suspense_ativado: false,
+            tempo_limite_suspense: 20,
+            audio_mp3_carregado: false,
+            
+            perguntas_ativas: [],
+            pergunta_atual_index: 0,
+            total_perguntas: 4,
+            perguntas_respondidas: 0,
+            todas_acertadas: false,
+            aguardando_reinicio: false,
+            
+            facemesh_model: null,
+            facemesh_loaded: false
+        };
+
+        // ============================================
+        // VARIÁVEIS GLOBAIS
+        // ============================================
+        let video = null;
+        let canvas = null;
+        let ctx = null;
+        let animationId = null;
+        let tempoSelecionado = 30;
+        let suspenseAudio = null;
+
+        // ============================================
+        // INICIALIZAÇÃO
+        // ============================================
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Iniciando aplicação...');
+            mostrarLoading('Carregando modelo de reconhecimento facial...');
+            
+            video = document.getElementById('video-frame');
+            canvas = document.getElementById('detection-canvas');
+            ctx = canvas.getContext('2d');
+            suspenseAudio = document.getElementById('suspenseAudio');
+            
+            carregarAudioMP3();
+            carregarFaceMesh();
+            
+            iniciarCamera().then(success => {
+                if (success) {
+                    console.log('✅ Câmera iniciada!');
+                    document.getElementById('cameraStatus').className = 'status-dot active';
+                } else {
+                    console.log('⚠️ Falha na câmera');
+                    document.getElementById('cameraStatus').className = 'status-dot inactive';
+                }
+            });
+            
+            document.getElementById('customTime')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') iniciarTimer();
+            });
+            document.getElementById('respostaInputOverlay')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') enviarRespostaOverlay();
+            });
+            
+            setTimer(30);
+        });
+
+        // ============================================
+        // CARREGAR FACEMESH (TensorFlow.js)
+        // ============================================
+        async function carregarFaceMesh() {
+            try {
+                console.log('🧠 Carregando modelo FaceMesh...');
+                mostrarLoading('Carregando modelo de reconhecimento facial...');
+                
+                // Configura o backend do TensorFlow
+                await tf.setBackend('webgl');
+                await tf.ready();
+                
+                // Carrega o modelo FaceMesh
+                const model = await facemesh.load({
+                    maxFaces: 1,
+                    refineLandmarks: true,
+                    flipHorizontal: true
+                });
+                
+                state.facemesh_model = model;
+                state.facemesh_loaded = true;
+                
+                console.log('✅ FaceMesh carregado com sucesso!');
+                esconderLoading();
+                
+                // Inicia a detecção
+                if (state.camera_ativa) {
+                    iniciarDeteccaoFaceMesh();
+                }
+                
+            } catch (error) {
+                console.error('❌ Erro ao carregar FaceMesh:', error);
+                mostrarLoading('⚠️ Erro ao carregar modelo! Usando fallback...');
+                setTimeout(() => {
+                    esconderLoading();
+                    iniciarDeteccaoFallback();
+                }, 2000);
+            }
+        }
+
+        // ============================================
+        // CARREGAR ÁUDIO
+        // ============================================
+        function carregarAudioMP3() {
+            if (!suspenseAudio) return;
+            console.log('🎵 Carregando áudio MP3...');
+            suspenseAudio.load();
+            suspenseAudio.addEventListener('canplaythrough', function() {
+                state.audio_mp3_carregado = true;
+                console.log('✅ Áudio MP3 carregado!');
+            });
+            suspenseAudio.addEventListener('error', function(e) {
+                console.log('⚠️ Erro no MP3:', e);
+                state.audio_mp3_carregado = false;
+            });
+        }
+
+        // ============================================
+        // LOADING
+        // ============================================
+        function mostrarLoading(msg) {
+            document.getElementById('loadingOverlay').classList.add('show');
+            document.getElementById('loadingMessage').textContent = msg;
+        }
+
+        function esconderLoading() {
+            document.getElementById('loadingOverlay').classList.remove('show');
+        }
+
+        // ============================================
+        // CÂMERA
+        // ============================================
+        async function iniciarCamera() {
+            try {
+                console.log('📷 Solicitando acesso à câmera...');
+                if (video.srcObject) {
+                    state.camera_ativa = true;
+                    return true;
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                
+                video.srcObject = stream;
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+                
+                state.camera_ativa = true;
+                document.getElementById('cameraStatus').className = 'status-dot active';
+                console.log('✅ Câmera iniciada!');
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                
+                if (state.facemesh_loaded) {
+                    iniciarDeteccaoFaceMesh();
+                } else {
+                    iniciarDeteccaoFallback();
+                }
+                return true;
+            } catch (error) {
+                console.error('❌ Erro na câmera:', error);
+                state.camera_ativa = false;
+                document.getElementById('cameraStatus').className = 'status-dot inactive';
+                return false;
+            }
+        }
+
+        function pararCamera() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            state.camera_ativa = false;
+            document.getElementById('cameraStatus').className = 'status-dot inactive';
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        // ============================================
+        // 🎯 DETECÇÃO COM FACEMESH (PRECISA)
+        // ============================================
+        function iniciarDeteccaoFaceMesh() {
+            if (state.detectando) return;
+            state.detectando = true;
+            console.log('🎯 Iniciando detecção com FaceMesh...');
+            detectarComFaceMesh();
+        }
+
+        async function detectarComFaceMesh() {
+            if (!state.camera_ativa || !state.facemesh_loaded) {
+                state.detectando = false;
+                return;
+            }
+            
+            animationId = requestAnimationFrame(detectarComFaceMesh);
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                try {
+                    // Limpa o canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // Estima a face
+                    const predictions = await state.facemesh_model.estimateFaces(video);
+                    
+                    if (predictions.length > 0) {
+                        const face = predictions[0];
+                        const landmarks = face.scaledMesh;
+                        
+                        // Desenha os landmarks
+                        ctx.fillStyle = '#00ff00';
+                        for (let i = 0; i < landmarks.length; i++) {
+                            const [x, y] = landmarks[i];
+                            ctx.beginPath();
+                            ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                        
+                        // Desenha a bounding box
+                        const box = face.boundingBox;
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.topLeft[0], box.topLeft[1], box.bottomRight[0] - box.topLeft[0], box.bottomRight[1] - box.topLeft[1]);
+                        
+                        // 🎯 ANALISA A EXPRESSÃO
+                        const expressao = analisarExpressaoFaceMesh(landmarks);
+                        state.expressao_atual = expressao;
+                        
+                        // Atualiza UI
+                        atualizarUIExpressao(expressao);
+                        verificarFluxo(expressao);
+                        
+                        // Mostra a expressão detectada
+                        const emojis = { 'FELIZ': '😊', 'BRAVO': '😠', 'TRISTE': '😢', 'NEUTRO': '😐', 'NADA': '👤' };
+                        document.getElementById('expressaoDetectada').textContent = `${emojis[expressao] || '😐'} ${expressao}`;
+                        
+                    } else {
+                        state.expressao_atual = "NADA";
+                        document.getElementById('expressaoDetectada').textContent = '👤 NENHUM ROSTO';
+                        verificarFluxo("NADA");
+                    }
+                    
+                } catch (error) {
+                    console.error('Erro na detecção FaceMesh:', error);
+                }
+            }
+        }
+
+        // ============================================
+        // 🎯 ANÁLISE DE EXPRESSÃO COM FACEMESH
+        // ============================================
+        function analisarExpressaoFaceMesh(landmarks) {
+            try {
+                // Índices dos landmarks importantes
+                // Sobrancelhas: 70-74 (esquerda), 300-304 (direita)
+                // Olhos: 33-133 (esquerdo), 362-263 (direito)
+                // Boca: 0, 17, 13, 14 (cantos e centro)
+                
+                // 1. ANÁLISE DA BOCA (SORRISO)
+                const bocaEsquerda = landmarks[61];  // Canto esquerdo da boca
+                const bocaDireita = landmarks[291];  // Canto direito da boca
+                const bocaSuperior = landmarks[13];   // Centro superior da boca
+                const bocaInferior = landmarks[14];   // Centro inferior da boca
+                
+                // Largura da boca (distância entre cantos)
+                const larguraBoca = Math.sqrt(
+                    Math.pow(bocaDireita[0] - bocaEsquerda[0], 2) + 
+                    Math.pow(bocaDireita[1] - bocaEsquerda[1], 2)
+                );
+                
+                // Altura da boca (distância entre superior e inferior)
+                const alturaBoca = Math.sqrt(
+                    Math.pow(bocaSuperior[0] - bocaInferior[0], 2) + 
+                    Math.pow(bocaSuperior[1] - bocaInferior[1], 2)
+                );
+                
+                // Razão de abertura da boca
+                const razaoBoca = alturaBoca / larguraBoca;
+                
+                // 2. ANÁLISE DA SOBRANCELHA (BRAVO)
+                const sobrancelhaEsq = landmarks[70];  // Ponto médio sobrancelha esquerda
+                const sobrancelhaDir = landmarks[300]; // Ponto médio sobrancelha direita
+                const olhoEsq = landmarks[33];         // Canto interno olho esquerdo
+                const olhoDir = landmarks[362];        // Canto interno olho direito
+                
+                // Distância sobrancelha-olho (franzido = mais perto)
+                const distSobrancelhaEsq = Math.sqrt(
+                    Math.pow(sobrancelhaEsq[0] - olhoEsq[0], 2) + 
+                    Math.pow(sobrancelhaEsq[1] - olhoEsq[1], 2)
+                );
+                const distSobrancelhaDir = Math.sqrt(
+                    Math.pow(sobrancelhaDir[0] - olhoDir[0], 2) + 
+                    Math.pow(sobrancelhaDir[1] - olhoDir[1], 2)
+                );
+                const mediaDistSobrancelha = (distSobrancelhaEsq + distSobrancelhaDir) / 2;
+                
+                // 3. ANÁLISE DOS OLHOS (TRISTE)
+                const olhoEsqSuperior = landmarks[159]; // Pálpebra superior esquerda
+                const olhoEsqInferior = landmarks[145]; // Pálpebra inferior esquerda
+                const olhoDirSuperior = landmarks[386]; // Pálpebra superior direita
+                const olhoDirInferior = landmarks[374]; // Pálpebra inferior direita
+                
+                // Abertura dos olhos
+                const aberturaOlhoEsq = Math.sqrt(
+                    Math.pow(olhoEsqSuperior[0] - olhoEsqInferior[0], 2) + 
+                    Math.pow(olhoEsqSuperior[1] - olhoEsqInferior[1], 2)
+                );
+                const aberturaOlhoDir = Math.sqrt(
+                    Math.pow(olhoDirSuperior[0] - olhoDirInferior[0], 2) + 
+                    Math.pow(olhoDirSuperior[1] - olhoDirInferior[1], 2)
+                );
+                const mediaAberturaOlhos = (aberturaOlhoEsq + aberturaOlhoDir) / 2;
+                
+                // 🎯 CLASSIFICAÇÃO DA EXPRESSÃO
+                
+                // 1. FELIZ: Boca aberta (sorriso)
+                if (razaoBoca > 0.6) {
+                    return "FELIZ";
+                }
+                
+                // 2. BRAVO: Sobrancelhas franzidas (próximas dos olhos)
+                if (mediaDistSobrancelha < 25) {
+                    return "BRAVO";
+                }
+                
+                // 3. TRISTE: Olhos arregalados
+                if (mediaAberturaOlhos > 35) {
+                    return "TRISTE";
+                }
+                
+                // 4. NEUTRO: Nenhuma expressão forte
+                return "NEUTRO";
+                
+            } catch (error) {
+                console.error('Erro na análise de expressão:', error);
+                return "NEUTRO";
+            }
+        }
+
+        // ============================================
+        // FALLBACK: DETECÇÃO POR COR (CASO FACEMESH FALHE)
+        // ============================================
+        function iniciarDeteccaoFallback() {
+            if (state.detectando) return;
+            state.detectando = true;
+            console.log('⚠️ Usando detecção fallback...');
+            detectarFallback();
+        }
+
+        function detectarFallback() {
+            if (!state.camera_ativa) {
+                state.detectando = false;
+                return;
+            }
+            
+            animationId = requestAnimationFrame(detectarFallback);
+            
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                try {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // Detecta por cor (fallback simples)
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height * 0.65;
+                    const size = Math.min(60, canvas.width * 0.15);
+                    
+                    const imageData = ctx.getImageData(centerX - size/2, centerY - size/2, size, size);
+                    const data = imageData.data;
+                    
+                    let brightness = 0, count = 0;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i], g = data[i + 1], b = data[i + 2];
+                        brightness += (r + g + b) / 3;
+                        count++;
+                    }
+                    
+                    const media = count > 0 ? brightness / count : 0;
+                    
+                    let expressao = "NEUTRO";
+                    if (media > 150) expressao = "FELIZ";
+                    else if (media < 100) expressao = "TRISTE";
+                    
+                    state.expressao_atual = expressao;
+                    atualizarUIExpressao(expressao);
+                    verificarFluxo(expressao);
+                    
+                    const emojis = { 'FELIZ': '😊', 'TRISTE': '😢', 'NEUTRO': '😐', 'NADA': '👤' };
+                    document.getElementById('expressaoDetectada').textContent = `${emojis[expressao] || '😐'} ${expressao}`;
+                    
+                } catch (error) {
+                    console.error('Erro no fallback:', error);
+                }
+            }
+        }
+
+        // ============================================
+        // FLUXO PRINCIPAL (Mantido igual)
+        // ============================================
+        function verificarFluxo(expressao) {
+            switch(state.etapa) {
+                case "EXPRESSAO":
+                    verificarExpressaoAlvo(expressao);
+                    break;
+                case "TIMER":
+                    break;
+                case "SORRISO":
+                    verificarSorriso(expressao);
+                    break;
+            }
+        }
+
+        function verificarExpressaoAlvo(expressao) {
+            if (expressao === state.expressao_alvo) {
+                if (state.tempo_expressao_inicio === 0) {
+                    state.tempo_expressao_inicio = Date.now();
+                }
+                const tempoPassado = (Date.now() - state.tempo_expressao_inicio) / 1000;
+                const progresso = Math.min((tempoPassado / state.tempo_necessario_expressao) * 100, 100);
+                document.getElementById('targetBar').style.width = `${progresso}%`;
+                document.getElementById('targetTime').textContent = `${Math.floor(tempoPassado)}/${state.tempo_necessario_expressao}s`;
+                if (tempoPassado >= state.tempo_necessario_expressao) {
+                    state.etapa = "TIMER";
+                    state.tempo_expressao_inicio = 0;
+                    document.getElementById('targetOverlay').classList.add('hidden');
+                    iniciarContagemRegressiva();
+                }
+            } else {
+                state.tempo_expressao_inicio = 0;
+                document.getElementById('targetBar').style.width = '0%';
+                document.getElementById('targetTime').textContent = `0/${state.tempo_necessario_expressao}s`;
+            }
+        }
+
+        function iniciarContagemRegressiva() {
+            state.timer_ativo = true;
+            state.tempo_restante = state.tempo_total;
+            state.tempo_inicio = Date.now();
+            state.suspense_ativado = false;
+            
+            document.getElementById('timerOverlay').classList.remove('hidden');
+            atualizarTimerDisplay();
+            
+            if (state.timer_interval) clearInterval(state.timer_interval);
+            state.timer_interval = setInterval(() => {
+                const elapsed = (Date.now() - state.tempo_inicio) / 1000;
+                state.tempo_restante = Math.max(0, state.tempo_total - elapsed);
+                atualizarTimerDisplay();
+                
+                if (state.tempo_restante <= state.tempo_limite_suspense && 
+                    state.tempo_restante > 0 && 
+                    !state.suspense_ativado && 
+                    state.tempo_total >= 30) {
+                    ativarSuspense();
+                }
+                
+                if (state.tempo_restante <= 0) {
+                    pararSuspense();
+                    clearInterval(state.timer_interval);
+                    state.timer_interval = null;
+                    state.timer_ativo = false;
+                    iniciarSorriso();
+                }
+            }, 100);
+            
+            atualizarStatus();
+            mostrarMensagem('⏱️', 'Timer iniciado!', `Aguardando ${state.tempo_total}s`);
+        }
+
+        function atualizarTimerDisplay() {
+            const mins = Math.floor(state.tempo_restante / 60);
+            const secs = Math.floor(state.tempo_restante % 60);
+            document.getElementById('timerDisplay').textContent = 
+                `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            document.getElementById('tempoDisplay').textContent = 
+                state.timer_ativo ? `${Math.floor(state.tempo_restante)}s` : '--';
+        }
+
+        // ============================================
+        // 🎵 MÚSICA DE SUSPENSE
+        // ============================================
+        function ativarSuspense() {
+            if (state.suspense_tocando) return;
+            state.suspense_ativado = true;
+            state.suspense_tocando = true;
+            document.getElementById('suspenseIndicator').classList.add('show');
+            
+            if (suspenseAudio && state.audio_mp3_carregado) {
+                try {
+                    suspenseAudio.currentTime = 0;
+                    suspenseAudio.volume = 0.5;
+                    suspenseAudio.loop = true;
+                    suspenseAudio.play().catch(e => {
+                        tocarSuspenseFallback();
+                    });
+                } catch (error) {
+                    tocarSuspenseFallback();
+                }
+            } else {
+                tocarSuspenseFallback();
+            }
+            mostrarMensagem('🎵', 'MÚSICA DE SUSPENSE ATIVADA!', 'Últimos 20 segundos!');
+        }
+
+        function tocarSuspenseFallback() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                function playSuspenseNote() {
+                    if (!state.suspense_tocando) return;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    const notes = [220, 233, 261, 277, 293, 311, 329, 349];
+                    const randomNote = notes[Math.floor(Math.random() * notes.length)];
+                    osc.frequency.value = randomNote;
+                    osc.type = 'sawtooth';
+                    gain.gain.value = 0.1;
+                    osc.start();
+                    setTimeout(() => {
+                        osc.stop();
+                        if (state.suspense_tocando) {
+                            setTimeout(playSuspenseNote, 200 + Math.random() * 300);
+                        }
+                    }, 300);
+                }
+                playSuspenseNote();
+            } catch (error) {
+                console.error('Erro no fallback:', error);
+            }
+        }
+
+        function pararSuspense() {
+            state.suspense_tocando = false;
+            state.suspense_ativado = false;
+            if (suspenseAudio) {
+                suspenseAudio.pause();
+                suspenseAudio.currentTime = 0;
+            }
+            document.getElementById('suspenseIndicator').classList.remove('show');
+        }
+
+        // ============================================
+        // SORRISO
+        // ============================================
+        function iniciarSorriso() {
+            state.etapa = "SORRISO";
+            state.tempo_sorriso_inicio = 0;
+            document.getElementById('timerOverlay').classList.add('hidden');
+            document.getElementById('smileOverlay').classList.remove('hidden');
+            document.getElementById('smileBar').style.width = '0%';
+            document.getElementById('smileTime').textContent = '0/3s';
+            tocarSom();
+            mostrarMensagem('⏰', 'TEMPO ACABOU!', '😊 Sorria por 3 segundos!');
+            atualizarStatus();
+        }
+
+        function verificarSorriso(expressao) {
+            if (expressao === "FELIZ") {
+                if (state.tempo_sorriso_inicio === 0) {
+                    state.tempo_sorriso_inicio = Date.now();
+                }
+                const tempoPassado = (Date.now() - state.tempo_sorriso_inicio) / 1000;
+                const progresso = Math.min((tempoPassado / state.tempo_necessario_sorriso) * 100, 100);
+                document.getElementById('smileBar').style.width = `${progresso}%`;
+                document.getElementById('smileTime').textContent = `${Math.floor(tempoPassado)}/${state.tempo_necessario_sorriso}s`;
+                if (tempoPassado >= state.tempo_necessario_sorriso) {
+                    document.getElementById('smileOverlay').classList.add('hidden');
+                    iniciarMultiplasPerguntas();
+                }
+            } else {
+                state.tempo_sorriso_inicio = 0;
+                document.getElementById('smileBar').style.width = '0%';
+                document.getElementById('smileTime').textContent = '0/3s';
+            }
+        }
+
+        // ============================================
+        // PERGUNTAS
+        // ============================================
+        function iniciarMultiplasPerguntas() {
+            state.etapa = "PERGUNTA";
+            state.todas_acertadas = false;
+            state.aguardando_reinicio = false;
+            
+            const perguntasEmbaralhadas = [...PERGUNTAS].sort(() => Math.random() - 0.5);
+            state.perguntas_ativas = perguntasEmbaralhadas.slice(0, state.total_perguntas);
+            state.pergunta_atual_index = 0;
+            state.perguntas_respondidas = 0;
+            
+            pararSuspense();
+            mostrarPergunta();
+        }
+
+        function mostrarPergunta() {
+            if (state.pergunta_atual_index >= state.perguntas_ativas.length) {
+                finalizarComSucesso();
+                return;
+            }
+            
+            const pergunta = state.perguntas_ativas[state.pergunta_atual_index];
+            const overlay = document.getElementById('perguntaOverlay');
+            overlay.classList.add('show');
+            
+            document.getElementById('perguntaEmoji').textContent = '🤔';
+            document.getElementById('perguntaTextoOverlay').textContent = pergunta.pergunta;
+            document.getElementById('dicaTextoOverlay').textContent = `💡 ${pergunta.dica}`;
+            document.getElementById('statusSomPergunta').textContent = '🔊 SOM TOCANDO';
+            document.getElementById('statusSomPergunta').className = 'status-som tocando';
+            document.getElementById('tentativasOverlay').textContent = `📝 Pergunta ${state.pergunta_atual_index + 1} de ${state.total_perguntas}`;
+            document.getElementById('erroOverlay').style.display = 'none';
+            document.getElementById('respostaInputOverlay').value = '';
+            document.getElementById('respostaInputOverlay').focus();
+            document.getElementById('btnEnviarOverlay').disabled = false;
+            
+            atualizarProgressoPerguntas();
+            
+            document.getElementById('smileOverlay').classList.add('hidden');
+            document.getElementById('timerOverlay').classList.add('hidden');
+            
+            mostrarMensagem('🤔', `Pergunta ${state.pergunta_atual_index + 1} de ${state.total_perguntas}`, '🔊 O som continua!');
+            atualizarStatus();
+        }
+
+        function atualizarProgressoPerguntas() {
+            const bolinhas = document.querySelectorAll('.progresso-perguntas .bolinha');
+            bolinhas.forEach((bolinha, index) => {
+                if (index < state.perguntas_respondidas) {
+                    bolinha.className = 'bolinha concluida';
+                    bolinha.textContent = '✓';
+                } else if (index === state.pergunta_atual_index) {
+                    bolinha.className = 'bolinha ativa';
+                    bolinha.textContent = index + 1;
+                } else {
+                    bolinha.className = 'bolinha pendente';
+                    bolinha.textContent = index + 1;
+                }
+            });
+        }
+
+        function enviarRespostaOverlay() {
+            if (state.aguardando_reinicio) return;
+            
+            const resposta = document.getElementById('respostaInputOverlay').value.trim().toLowerCase();
+            if (!resposta) {
+                document.getElementById('erroOverlay').textContent = '⚠️ Digite uma resposta!';
+                document.getElementById('erroOverlay').style.display = 'block';
+                return;
+            }
+            
+            const perguntaAtual = state.perguntas_ativas[state.pergunta_atual_index];
+            
+            if (perguntaAtual.respostas.includes(resposta)) {
+                state.perguntas_respondidas++;
+                state.pergunta_atual_index++;
+                atualizarProgressoPerguntas();
+                
+                if (state.pergunta_atual_index >= state.perguntas_ativas.length) {
+                    finalizarComSucesso();
+                } else {
+                    document.getElementById('respostaInputOverlay').value = '';
+                    document.getElementById('erroOverlay').style.display = 'none';
+                    mostrarMensagem('✅', 'Acertou! Próxima pergunta!', `Pergunta ${state.pergunta_atual_index + 1} de ${state.total_perguntas}`);
+                    setTimeout(() => mostrarPergunta(), 500);
+                }
+            } else {
+                state.aguardando_reinicio = true;
+                document.getElementById('erroOverlay').textContent = '❌ Resposta errada! Timer vai reiniciar...';
+                document.getElementById('erroOverlay').style.display = 'block';
+                document.getElementById('btnEnviarOverlay').disabled = true;
+                
+                const bolinhas = document.querySelectorAll('.progresso-perguntas .bolinha');
+                if (bolinhas[state.pergunta_atual_index]) {
+                    bolinhas[state.pergunta_atual_index].className = 'bolinha erro';
+                }
+                
+                pararSuspense();
+                
+                setTimeout(() => {
+                    document.getElementById('perguntaOverlay').classList.remove('show');
+                    state.etapa = "EXPRESSAO";
+                    state.tempo_expressao_inicio = 0;
+                    state.pergunta_atual_index = 0;
+                    state.perguntas_respondidas = 0;
+                    state.aguardando_reinicio = false;
+                    state.suspense_ativado = false;
+                    iniciarTimer();
+                    mostrarMensagem('🔄', 'Timer reiniciado!', 'Tente novamente!');
+                }, 2000);
+            }
+        }
+
+        function finalizarComSucesso() {
+            state.etapa = "FINALIZADO";
+            state.timer_ativo = false;
+            state.todas_acertadas = true;
+            
+            pararSom();
+            pararSuspense();
+            
+            document.getElementById('perguntaOverlay').classList.remove('show');
+            document.getElementById('btnIniciar').disabled = false;
+            document.getElementById('btnIniciar').classList.remove('opacity-50', 'cursor-not-allowed');
+            
+            mostrarMensagem('🎉', 'PARABÉNS! Você acertou TODAS as 4 perguntas!', '🔇 Som desligado! Timer finalizado!');
+            
+            const bolinhas = document.querySelectorAll('.progresso-perguntas .bolinha');
+            bolinhas.forEach(b => {
+                b.className = 'bolinha concluida';
+                b.textContent = '✓';
+            });
+            
+            atualizarStatus();
+            if (state.timer_interval) {
+                clearInterval(state.timer_interval);
+                state.timer_interval = null;
+            }
+        }
+
+        // ============================================
+        // CONTROLES
+        // ============================================
+        function setTimer(segundos) {
+            tempoSelecionado = segundos;
+            document.getElementById('customTime').value = segundos;
+            document.querySelectorAll('.btn-tempo').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'bg-blue-50');
+            });
+            document.querySelector(`.btn-tempo[data-tempo="${segundos}"]`)?.classList.add('border-blue-500', 'bg-blue-50');
+        }
+
+        function iniciarTimer() {
+            if (!state.camera_ativa) {
+                mostrarMensagem('❌', 'Câmera não está ativa!', '');
+                iniciarCamera();
+                return;
+            }
+            
+            const expressoes = Object.keys(EXPRESSOES);
+            const alvo = expressoes[Math.floor(Math.random() * expressoes.length)];
+            
+            state.expressao_alvo = alvo;
+            state.etapa = "EXPRESSAO";
+            state.tempo_total = parseInt(document.getElementById('customTime').value) || tempoSelecionado;
+            state.tempo_restante = state.tempo_total;
+            state.tempo_expressao_inicio = 0;
+            state.suspense_ativado = false;
+            state.pergunta_atual_index = 0;
+            state.perguntas_respondidas = 0;
+            state.aguardando_reinicio = false;
+            
+            const bolinhas = document.querySelectorAll('.progresso-perguntas .bolinha');
+            bolinhas.forEach((b, i) => {
+                b.className = 'bolinha pendente';
+                b.textContent = i + 1;
+            });
+            
+            pararSuspense();
+            
+            document.getElementById('targetOverlay').classList.remove('hidden');
+            document.getElementById('targetEmoji').textContent = EXPRESSOES[alvo].emoji;
+            document.getElementById('targetName').textContent = alvo;
+            document.getElementById('targetDica').textContent = `💡 ${EXPRESSOES[alvo].dica}`;
+            document.getElementById('targetBar').style.width = '0%';
+            document.getElementById('targetTime').textContent = `0/${state.tempo_necessario_expressao}s`;
+            
+            document.getElementById('btnIniciar').disabled = true;
+            document.getElementById('btnIniciar').classList.add('opacity-50', 'cursor-not-allowed');
+            
+            document.getElementById('perguntaOverlay').classList.remove('show');
+            document.getElementById('suspenseIndicator').classList.remove('show');
+            
+            mostrarMensagem('🎯', `Faça a expressão: ${EXPRESSOES[alvo].emoji} ${alvo}`, `💡 ${EXPRESSOES[alvo].dica}`);
+            atualizarStatus();
+        }
+
+        function pararTimer() {
+            if (state.timer_interval) {
+                clearInterval(state.timer_interval);
+                state.timer_interval = null;
+            }
+            
+            state.etapa = "INICIAL";
+            state.timer_ativo = false;
+            state.tempo_restante = 0;
+            
+            pararSom();
+            pararSuspense();
+            
+            document.getElementById('btnIniciar').disabled = false;
+            document.getElementById('btnIniciar').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('targetOverlay').classList.add('hidden');
+            document.getElementById('timerOverlay').classList.add('hidden');
+            document.getElementById('smileOverlay').classList.add('hidden');
+            document.getElementById('perguntaOverlay').classList.remove('show');
+            document.getElementById('mensagemCard').classList.add('hidden');
+            document.getElementById('suspenseIndicator').classList.remove('show');
+            
+            const bolinhas = document.querySelectorAll('.progresso-perguntas .bolinha');
+            bolinhas.forEach((b, i) => {
+                b.className = 'bolinha pendente';
+                b.textContent = i + 1;
+            });
+            
+            atualizarStatus();
+            mostrarMensagem('⏹️', 'Timer parado!', '');
+        }
+
+        // ============================================
+        // SOM
+        // ============================================
+        function tocarSom() {
+            if (state.som_tocando) return;
+            state.som_tocando = true;
+            document.getElementById('somDisplay').textContent = '🔊';
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                state.audio_context = audioCtx;
+                function playBeep() {
+                    if (!state.som_tocando) return;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.value = 440;
+                    osc.type = 'square';
+                    gain.gain.value = 0.3;
+                    osc.start();
+                    setTimeout(() => {
+                        osc.stop();
+                        if (state.som_tocando) {
+                            setTimeout(playBeep, 200);
+                        }
+                    }, 300);
+                }
+                playBeep();
+            } catch (error) {
+                console.error('Erro no som:', error);
+            }
+        }
+
+        function pararSom() {
+            state.som_tocando = false;
+            document.getElementById('somDisplay').textContent = '🔇';
+            if (state.audio_context) {
+                try { state.audio_context.close(); } catch(e) {}
+                state.audio_context = null;
+            }
+        }
+
+        // ============================================
+        // UI UPDATES
+        // ============================================
+        function atualizarStatus() {
+            const etapaMap = {
+                'INICIAL': '⏸️ INICIAL',
+                'EXPRESSAO': '🎯 EXPRESSÃO',
+                'TIMER': '⏱️ TIMER',
+                'SORRISO': '😊 SORRISO',
+                'PERGUNTA': '🤔 PERGUNTA',
+                'FINALIZADO': '🎉 FINALIZADO'
+            };
+            document.getElementById('etapaDisplay').textContent = etapaMap[state.etapa] || state.etapa;
+        }
+
+        function atualizarUIExpressao(expressao) {
+            const emojis = { 'FELIZ': '😊', 'BRAVO': '😠', 'TRISTE': '😢', 'NEUTRO': '😐', 'NADA': '👤' };
+            document.getElementById('expressaoDisplay').textContent = `${emojis[expressao] || '😐'} ${expressao}`;
+            document.getElementById('expressaoAtualDisplay').textContent = emojis[expressao] || '😐';
+        }
+
+        function mostrarMensagem(icon, texto, detalhe = '') {
+            const card = document.getElementById('mensagemCard');
+            card.classList.remove('hidden');
+            document.getElementById('mensagemIcon').textContent = icon;
+            document.getElementById('mensagemTexto').textContent = texto;
+            document.getElementById('mensagemDetalhe').textContent = detalhe;
+        }
+
+        // ============================================
+        // LIMPEZA
+        // ============================================
+        window.addEventListener('beforeunload', function() {
+            pararCamera();
+            pararSom();
+            pararSuspense();
+            if (state.timer_interval) clearInterval(state.timer_interval);
+        });
+
+        console.log('🚀 Timer do Sorriso - FaceMesh + 4 Perguntas!');
+        console.log('📋 Total de perguntas:', PERGUNTAS.length);
+        console.log('🧠 Usando TensorFlow.js + FaceMesh para detecção');
+    </script>
+</body>
+</html>
