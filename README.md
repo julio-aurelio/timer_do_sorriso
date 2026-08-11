@@ -8,10 +8,9 @@ O reconhecimento acontece diretamente no navegador. A câmera não é transmitid
 
 - Desbloqueio da partida com uma expressão facial: feliz, bravo ou triste.
 - Reconhecimento facial por 52 blendshapes do MediaPipe Face Landmarker.
-- Reconhecimento dos gestos de joia, paz e mão aberta com MediaPipe Hands.
+- Reconhecimento treinado dos gestos de joia, paz e mão aberta com MediaPipe Gesture Recognizer.
 - Rastreamento temporal para estabilizar expressões e evitar falsos positivos.
 - Três configurações de duração e campo de tempo personalizado.
-- Bônus de 15 segundos ao iniciar cada desafio.
 - Pontuação, combos e níveis de dificuldade automáticos.
 - Efeitos sonoros de suspense, vitória e derrota.
 - Captura local dos melhores momentos da partida, com opção de reprodução e download.
@@ -35,7 +34,7 @@ Durante uma partida, o jogo sorteia minijogos sem repetir sempre a mesma ordem:
 - HTML5, CSS3 e JavaScript.
 - Tailwind CSS 3.4.
 - MediaPipe Face Landmarker para landmarks e blendshapes faciais.
-- MediaPipe Hands para landmarks das mãos.
+- MediaPipe Gesture Recognizer para classificação e landmarks das mãos.
 - Canvas API para o processamento visual.
 - MediaDevices API para acesso à webcam.
 - Web Audio API e elementos HTML de áudio.

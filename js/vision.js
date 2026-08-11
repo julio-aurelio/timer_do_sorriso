@@ -2,10 +2,8 @@
 
 // ---------- DETECÇÃO FACIAL MELHORADA COM ANÁLISE DE REGIÕES ----------
 let faceMeshModel = null;
-let handsModel = null;
-let handsCarregando = null;
-let handsResultado = null;
-let handsProcessando = false;
+let gestureRecognizerModel = null;
+let gestureRecognizerCarregando = null;
 let ultimaInferenciaMao = 0;
 let deteccaoAtiva = false;
 let deteccaoGeracao = 0;
@@ -38,28 +36,46 @@ const GESTOS_MAO = [
     { id: 'MAO_ABERTA', emoji: '✋', texto: 'MOSTRE A MÃO ABERTA' }
 ];
 
-async function carregarHandPose() {
-    if (handsModel) return handsModel;
-    if (handsCarregando) return handsCarregando;
-    if (typeof Hands === 'undefined') return null;
-    handsCarregando = Promise.resolve().then(() => {
-        const modelo = new Hands({
-            locateFile: arquivo => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${arquivo}`
-        });
-        modelo.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.55, minTrackingConfidence: 0.5 });
-        modelo.onResults(resultado => {
-            handsResultado = resultado;
-            handsProcessando = false;
-        });
-        handsModel = modelo;
-        console.log('✅ MediaPipe Hands carregado');
-        return modelo;
+async function carregarReconhecedorGestos() {
+    if (gestureRecognizerModel) return gestureRecognizerModel;
+    if (gestureRecognizerCarregando) return gestureRecognizerCarregando;
+    gestureRecognizerCarregando = Promise.resolve().then(async () => {
+        if (!window.MediaPipeVision) {
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('MediaPipe Tasks não carregou')), 15000);
+                window.addEventListener('mediapipe-vision-ready', () => { clearTimeout(timeout); resolve(); }, { once: true });
+            });
+        }
+        const { GestureRecognizer, FilesetResolver } = window.MediaPipeVision;
+        const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm'
+        );
+        const opcoes = {
+            baseOptions: {
+                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
+                delegate: 'GPU'
+            },
+            runningMode: 'VIDEO',
+            numHands: 1,
+            minHandDetectionConfidence: 0.45,
+            minHandPresenceConfidence: 0.4,
+            minTrackingConfidence: 0.4
+        };
+        try {
+            gestureRecognizerModel = await GestureRecognizer.createFromOptions(vision, opcoes);
+        } catch (gpuError) {
+            console.warn('GPU indisponível para gestos; usando CPU.', gpuError);
+            opcoes.baseOptions.delegate = 'CPU';
+            gestureRecognizerModel = await GestureRecognizer.createFromOptions(vision, opcoes);
+        }
+        console.log('✅ MediaPipe Gesture Recognizer carregado');
+        return gestureRecognizerModel;
     }).catch(error => {
-        console.error('❌ Detector de mãos indisponível:', error);
-        handsCarregando = null;
+        console.error('❌ Reconhecedor de gestos indisponível:', error);
+        gestureRecognizerCarregando = null;
         return null;
     });
-    return handsCarregando;
+    return gestureRecognizerCarregando;
 }
 
 function dedoEstendido(pontos, ponta, articulacao) {
@@ -82,38 +98,57 @@ function classificarGestoMao(pontos) {
     return 'NADA';
 }
 
+function interpretarResultadoGesto(resultado, pontos) {
+    const categoria = resultado?.gestures?.[0]?.[0];
+    const nomesGestos = { Thumb_Up: 'JOIA', Victory: 'PAZ', Open_Palm: 'MAO_ABERTA' };
+    const gestoModelo = nomesGestos[categoria?.categoryName] || 'NADA';
+    const gestoGeometrico = classificarGestoMao(pontos);
+    const gesto = gestoModelo !== 'NADA' ? gestoModelo : gestoGeometrico;
+    const confiancaBase = gestoModelo !== 'NADA'
+        ? (categoria?.score || 0)
+        : (gestoGeometrico !== 'NADA' ? 0.42 : 0);
+    const confianca = gestoModelo === gestoGeometrico
+        ? Math.min(1, confiancaBase + 0.12)
+        : confiancaBase;
+    return { gesto, confianca, origem: gestoModelo !== 'NADA' ? 'modelo' : 'geometria' };
+}
+
 async function detectarGestoMao(video, ctx) {
     if (state.etapa !== 'MAO') return;
-    const modelo = handsModel || await carregarHandPose();
+    const modelo = gestureRecognizerModel || await carregarReconhecedorGestos();
     if (!modelo) {
-        atualizarAcaoStatusUI('⏳ Carregando detector de mãos...');
+        atualizarAcaoStatusUI('⏳ Carregando reconhecedor de gestos...');
         return;
     }
     const agora = performance.now();
-    if (!handsProcessando && agora - ultimaInferenciaMao > 65) {
-        ultimaInferenciaMao = agora;
-        handsProcessando = true;
-        modelo.send({ image: video }).catch(() => { handsProcessando = false; });
-    }
-    const maos = handsResultado?.multiHandLandmarks;
+    if (agora - ultimaInferenciaMao < 70) return;
+    ultimaInferenciaMao = agora;
+    const resultado = modelo.recognizeForVideo(video, agora);
+    const maos = resultado?.landmarks;
     if (!Array.isArray(maos) || !maos.length) {
-        state.gesto_mao_frames = 0;
+        state.gesto_mao_frames = Math.max(0, state.gesto_mao_frames - 0.5);
         atualizarAcaoStatusUI('👋 Coloque uma mão inteira dentro da câmera');
-        atualizarAcaoProgressoUI(0);
+        atualizarAcaoProgressoUI(limitar((state.gesto_mao_frames / 2.5) * 100, 0, 100));
         return;
     }
     const pontos = maos[0].map(p => [p.x * ctx.canvas.width, p.y * ctx.canvas.height, p.z]);
-    const gesto = classificarGestoMao(pontos);
+    const { gesto, confianca } = interpretarResultadoGesto(resultado, pontos);
     pontos.forEach(([x, y]) => {
         ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2);
         ctx.fillStyle = '#facc15'; ctx.fill();
     });
-    if (gesto === state.gesto_mao_alvo) state.gesto_mao_frames++;
-    else state.gesto_mao_frames = Math.max(0, state.gesto_mao_frames - 0.25);
-    const progresso = limitar((state.gesto_mao_frames / 3) * 100, 0, 100);
+    if (gesto === state.gesto_mao_alvo && confianca >= 0.35) {
+        state.gesto_mao_frames += confianca >= 0.7 ? 1.4 : 1;
+    } else {
+        state.gesto_mao_frames = Math.max(0, state.gesto_mao_frames - 0.35);
+    }
+    const progresso = limitar((state.gesto_mao_frames / 2.5) * 100, 0, 100);
     atualizarAcaoProgressoUI(progresso);
-    atualizarAcaoStatusUI(gesto === 'NADA' ? '🔎 Ajuste a mão conforme o desenho' : `Detectado: ${gesto}`);
-    if (state.gesto_mao_frames >= 3) {
+    const percentual = Math.round(confianca * 100);
+    atualizarAcaoStatusUI(gesto === 'NADA'
+        ? '👋 Mão encontrada — abra bem os dedos e mantenha o sinal'
+        : `Detectado: ${gesto} · ${percentual}%`);
+    if (state.gesto_mao_frames >= 2.5) {
         state.gesto_mao_frames = 0;
         registrarAcerto(140);
         esconderAcaoUI();
@@ -280,25 +315,36 @@ function classificarBlendshapes(categorias = []) {
     const olhosApertados = media('eyeSquintLeft', 'eyeSquintRight');
     const narizFranzido = media('noseSneerLeft', 'noseSneerRight');
     const bocaTriste = media('mouthFrownLeft', 'mouthFrownRight');
+    const cantoTristeMaisForte = Math.max(blend.mouthFrownLeft || 0, blend.mouthFrownRight || 0);
     const sobrancelhaInterna = blend.browInnerUp || 0;
+    const labioInferiorTriste = Math.max(
+        blend.mouthShrugLower || 0,
+        media('mouthLowerDownLeft', 'mouthLowerDownRight') * 0.65
+    );
 
     const scores = {
         FELIZ: sorriso * 0.72 + bochechas * 0.28,
         BRAVO: sobrancelhasBaixas * 0.55 + olhosApertados * 0.25 + narizFranzido * 0.20,
-        TRISTE: bocaTriste * 0.67 + sobrancelhaInterna * 0.33
+        TRISTE: bocaTriste * 0.43 + cantoTristeMaisForte * 0.22 + sobrancelhaInterna * 0.27 + labioInferiorTriste * 0.08
     };
 
-    // No desbloqueio, prioriza a ação pedida quando ela já atingiu um sinal
-    // convincente. Isso evita que pequenas ativações simultâneas disputem o alvo.
-    if (state.etapa === 'EXPRESSAO' && EXPRESSOES_DESBLOQUEIO.includes(state.expressao_alvo)) {
-        const limiaresDesbloqueio = { FELIZ: 0.22, BRAVO: 0.18, TRISTE: 0.22 };
-        const scoreAlvo = scores[state.expressao_alvo];
-        if (scoreAlvo >= limiaresDesbloqueio[state.expressao_alvo]) {
-            return { expressao: state.expressao_alvo, confianca: limitar(scoreAlvo + 0.15), metricas: scores };
+    // Prioriza a expressão pedida pelo jogo quando ela já atingiu um sinal
+    // convincente. Isso evita que ativações simultâneas disputem o alvo.
+    let alvoSolicitado = null;
+    if (state.etapa === 'EXPRESSAO') alvoSolicitado = state.expressao_alvo;
+    if (state.etapa === 'SORRISO') alvoSolicitado = 'FELIZ';
+    if (state.etapa === 'ACAO') {
+        alvoSolicitado = { feliz: 'FELIZ', bravo: 'BRAVO', triste: 'TRISTE' }[state.acao_atual?.acao] || null;
+    }
+    if (EXPRESSOES_DESBLOQUEIO.includes(alvoSolicitado)) {
+        const limiaresDoAlvo = { FELIZ: 0.22, BRAVO: 0.18, TRISTE: 0.14 };
+        const scoreAlvo = scores[alvoSolicitado];
+        if (scoreAlvo >= limiaresDoAlvo[alvoSolicitado]) {
+            return { expressao: alvoSolicitado, confianca: limitar(scoreAlvo + 0.15), metricas: scores };
         }
     }
     const [expressao, melhorScore] = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-    const limiar = expressao === 'BRAVO' ? 0.26 : 0.30;
+    const limiar = expressao === 'BRAVO' ? 0.26 : expressao === 'TRISTE' ? 0.16 : 0.30;
     if (melhorScore < limiar) return { expressao: 'NEUTRO', confianca: 1 - melhorScore, metricas: scores };
     return { expressao, confianca: limitar(melhorScore), metricas: scores };
 }
@@ -339,6 +385,8 @@ async function carregarFaceMesh() {
         state.modelo_carregado = true;
         esconderLoading();
         if (state.camera_ativa) iniciarDeteccaoFaceMesh();
+        // Pré-carrega em segundo plano para o desafio de mão começar sem espera.
+        carregarReconhecedorGestos();
         console.log('✅ Face Landmarker carregado com 52 blendshapes');
     } catch (error) {
         console.error('❌ Erro Face Landmarker:', error);

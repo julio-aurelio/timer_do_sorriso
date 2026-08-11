@@ -84,14 +84,10 @@ function proximaEtapa() {
         finalizarJogo();
         return;
     }
-    // Cada minijogo chega com sua própria folga; o relógio continua contínuo.
-    state.tempo_total += CONFIG.BONUS_POR_DESAFIO;
-    state.tempo_restante += CONFIG.BONUS_POR_DESAFIO;
-    atualizarTimerUI();
     const proxima = state.desafios[state.desafio_indice];
     const progresso = `${state.desafio_indice + 1}/${state.desafios.length}`;
     console.log(`🔄 Desafio ${progresso}: ${proxima}`);
-    mostrarMensagem('🎯', `Desafio ${progresso} · +${CONFIG.BONUS_POR_DESAFIO}s`, NOMES_DESAFIOS[proxima] || proxima);
+    mostrarMensagem('🎯', `Desafio ${progresso}`, NOMES_DESAFIOS[proxima] || proxima);
     switch(proxima) {
         case 'SORRISO': iniciarSorriso(); break;
         case 'PERGUNTA': iniciarPerguntas(); break;
@@ -199,8 +195,7 @@ function resetarEstado() {
     state.melhores_momentos = [];
     historicoFaceMesh = [];
     historicoExpressoes = [];
-    handsResultado = null;
-    handsProcessando = false;
+    ultimaInferenciaMao = 0;
     frameCount = 0;
     limparTodosIntervalos();
     atualizarPontuacaoUI();

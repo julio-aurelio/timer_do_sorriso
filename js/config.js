@@ -9,7 +9,6 @@ const CONFIG = {
     TEMPO_EXPRESSAO: 5,
     TEMPO_SORRISO: 3,
     TEMPO_BOMBA: 15,
-    BONUS_POR_DESAFIO: 15,
     TOTAL_PERGUNTAS: 1,
     LIMITE_SUSPENSE: 20,
     DIFICULDADE: {
@@ -47,7 +46,7 @@ const PERGUNTAS = [
 const EXPRESSOES = {
     "FELIZ": { emoji: "😊", dica: "SORRIA mostrando os dentes!" },
     "BRAVO": { emoji: "😠", dica: "FRANZA A TESTA e aperte os olhos!" },
-    "TRISTE": { emoji: "😢", dica: "ABRA BEM OS OLHOS e faça boca de triste!" }
+    "TRISTE": { emoji: "😢", dica: "LEVANTE o meio das sobrancelhas e EMPURRE os cantos da boca para baixo. Não abra muito a boca." }
 };
 
 // O desbloqueio nunca usa estados de detecção como NEUTRO ou NADA.
@@ -76,7 +75,7 @@ const CORES_STROOP = [
 const ACOES_ESPECIAIS = [
     { id: 'sorriso', emoji: '😁', texto: 'FAÇA UM SORRISO BEM EXAGERADO', acao: 'feliz' },
     { id: 'bravo', emoji: '😠', texto: 'FRANZA A TESTA E FAÇA CARA DE BRAVO', acao: 'bravo' },
-    { id: 'triste', emoji: '☹️', texto: 'ABAIXE OS CANTOS DA BOCA', acao: 'triste' }
+    { id: 'triste', emoji: '☹️', texto: 'LEVANTE O MEIO DAS SOBRANCELHAS E ABAIXE OS CANTOS DA BOCA', acao: 'triste' }
 ];
 
 const EVENTOS_ALEATORIOS = [

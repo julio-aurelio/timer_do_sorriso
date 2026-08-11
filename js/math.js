@@ -2,7 +2,7 @@
 
 // ---------- SEQUÊNCIA MATEMÁTICA ----------
 function iniciarSequenciaMatematica() {
-    console.log('🧮 INICIANDO SEQUÊNCIA MATEMÁTICA!');
+    console.log('🧮 INICIANDO SEQUÊNCIA MATEMÁTICA! SOME TODOS OS NUMEROS');
     state.etapa = "MATEMATICA";
     mostrarComando('🧮 MEMÓRIA MATEMÁTICA', 'Memorize os números que aparecem, some todos e digite o resultado.');
     state.matematica_indice_atual = 0;
@@ -24,7 +24,7 @@ function iniciarSequenciaMatematica() {
 
 function mostrarProximoNumeroMatematica() {
     if (state.matematica_indice_atual >= state.matematica_numeros.length) {
-        document.getElementById('sequenciaDisplay').textContent = '❓ QUAL O RESULTADO?';
+        document.getElementById('sequenciaDisplay').textContent = '❓ QUAL A SOMA DE TODOS OS NÚMEROS?';
         document.getElementById('sequenciaProgresso').style.width = '100%';
         return;
     }

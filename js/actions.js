@@ -9,7 +9,6 @@ function iniciarAcaoEspecial() {
     state.acao_tempo_restante = CONFIG.DIFICULDADE.ACAO_ESPECIAL.TEMPO;
     const acao = ACOES_ESPECIAIS[Math.floor(Math.random() * ACOES_ESPECIAIS.length)];
     state.acao_atual = acao;
-    const alvoGuia = acao.acao === 'feliz' ? 'FELIZ' : acao.acao === 'bravo' ? 'BRAVO' : 'TRISTE';
     mostrarAcaoUI();
     atualizarStatusUI();
     atualizarAcaoUI(acao);
@@ -32,8 +31,16 @@ function verificarAcaoEspecial(expressao) {
     }
     state.acao_frames = executou ? state.acao_frames + 1 : Math.max(0, state.acao_frames - 0.5);
     atualizarAcaoProgressoUI(limitar((state.acao_frames / 5) * 100, 0, 100));
-    if (executou) atualizarAcaoStatusUI('✅ Expressão certa — segure a careta!');
-    else atualizarAcaoStatusUI('🔎 Faça uma careta mais marcada');
+    if (executou) {
+        atualizarAcaoStatusUI('✅ Expressão certa — segure a careta!');
+    } else {
+        const dicas = {
+            feliz: '🔎 Levante bem os cantos da boca',
+            bravo: '🔎 Abaixe e aproxime as sobrancelhas',
+            triste: '🔎 Levante o meio das sobrancelhas e abaixe os cantos da boca'
+        };
+        atualizarAcaoStatusUI(dicas[acao.acao] || '🔎 Faça a expressão de forma mais marcada');
+    }
     if (state.acao_frames >= 5) {
         state.acao_executada = true;
         registrarAcerto(110);
@@ -60,7 +67,7 @@ function iniciarGestoMao() {
     atualizarAcaoTempoUI(Math.ceil(state.tempo_restante));
     mostrarAcaoUI();
     atualizarStatusUI();
-    carregarHandPose();
+    carregarReconhecedorGestos();
 }
 
 // ---------- EVENTOS ALEATÓRIOS ----------

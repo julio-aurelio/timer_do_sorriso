@@ -14,12 +14,10 @@
     
     <!-- MediaPipe Tasks Vision: Face Landmarker com 52 blendshapes -->
     <script type="module">
-        import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/+esm';
-        window.MediaPipeVision = { FaceLandmarker, FilesetResolver };
+        import { FaceLandmarker, FilesetResolver, GestureRecognizer } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/+esm';
+        window.MediaPipeVision = { FaceLandmarker, FilesetResolver, GestureRecognizer };
         window.dispatchEvent(new Event('mediapipe-vision-ready'));
     </script>
-    <!-- Rastreamento temporal de mãos, mais leve que o antigo Handpose -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
     <!-- CSS -->
     <link rel="stylesheet" href="css/style.css">
