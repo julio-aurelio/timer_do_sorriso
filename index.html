@@ -12,10 +12,14 @@
     <!-- Tailwind compilado localmente para produção -->
     <link rel="stylesheet" href="css/tailwind.css">
     
-    <!-- TensorFlow.js e sucessor oficial do FaceMesh -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.6.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@0.0.1"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7"></script>
+    <!-- MediaPipe Tasks Vision: Face Landmarker com 52 blendshapes -->
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/+esm';
+        window.MediaPipeVision = { FaceLandmarker, FilesetResolver };
+        window.dispatchEvent(new Event('mediapipe-vision-ready'));
+    </script>
+    <!-- Rastreamento temporal de mãos, mais leve que o antigo Handpose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
     <!-- CSS -->
     <link rel="stylesheet" href="css/style.css">
@@ -24,6 +28,23 @@
     <div id="comandoDesafio" class="fixed top-3 left-1/2 -translate-x-1/2 z-[10020] hidden w-[min(92%,620px)] bg-indigo-950/95 text-white border-2 border-indigo-400 rounded-2xl px-5 py-3 text-center shadow-2xl">
         <div id="comandoTitulo" class="font-black text-lg">🎯 COMANDO</div>
         <div id="comandoTexto" class="text-sm text-indigo-100">Prepare-se!</div>
+    </div>
+
+    <div id="melhoresMomentosOverlay" class="melhores-momentos-overlay hidden">
+        <div class="melhores-momentos-card">
+            <span class="melhores-momentos-kicker">📸 MELHORES MOMENTOS</span>
+            <h2>Suas caretas em alta velocidade</h2>
+            <div class="timelapse-palco">
+                <img id="timelapseImagem" alt="Melhor momento capturado durante a partida">
+                <span id="timelapseContador">1/1</span>
+            </div>
+            <p id="timelapseAviso">As imagens ficam somente neste navegador.</p>
+            <div class="timelapse-acoes">
+                <button type="button" onclick="reproduzirTimelapse()">▶️ Repetir</button>
+                <button type="button" onclick="baixarTimelapse()">⬇️ Baixar vídeo</button>
+                <button type="button" onclick="fecharMelhoresMomentos()">Fechar</button>
+            </div>
+        </div>
     </div>
 
     <!-- Loading -->
@@ -120,28 +141,6 @@
         </div>
     </div>
 
-    <!-- AÇÃO ESPECIAL OVERLAY -->
-    <div id="acaoOverlay" class="fixed inset-0 bg-black/90 hidden justify-center items-center z-[9997] backdrop-blur-xl">
-        <div class="bg-gradient-to-br from-orange-900 to-red-900 rounded-3xl p-8 max-w-md w-full border-2 border-orange-500 shadow-2xl">
-            <div class="text-center">
-                <div class="text-6xl mb-2">👀</div>
-                <h2 class="text-2xl font-bold text-white mb-4">AÇÃO ESPECIAL</h2>
-                <div class="bg-black/50 rounded-xl p-6 mb-4">
-                    <div id="acaoEmoji" class="text-8xl mb-2">👉</div>
-                    <p id="acaoTexto" class="text-2xl font-bold text-white">MOVA A CABEÇA PARA A ESQUERDA</p>
-                </div>
-                <div class="flex items-center justify-center gap-4 mb-4">
-                    <span class="text-white">Progresso:</span>
-                    <div class="w-48 h-3 bg-gray-700 rounded-full overflow-hidden">
-                        <div id="acaoProgresso" class="h-full bg-orange-500 transition-all duration-300" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="text-white text-sm" id="acaoStatus">⏳ Aguardando ação...</div>
-                <p class="text-gray-400 text-sm mt-4" id="acaoTempo">⏱️ Tempo: 5s</p>
-            </div>
-        </div>
-    </div>
-
     <!-- BOMBA OVERLAY -->
     <div id="bombaOverlay" class="fixed inset-0 bg-black/90 hidden justify-center items-center z-[9998] backdrop-blur-xl">
         <div class="bomba-container bg-gradient-to-br from-gray-900 to-red-900 rounded-3xl p-8 max-w-md w-full border-2 border-red-500 shadow-2xl animate-pulse-border">
@@ -227,28 +226,25 @@
                         <video id="video-frame" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
                         <canvas id="detection-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
 
-                        <div id="guiaFacial" class="guia-facial">
-                            <div class="guia-moldura">
-                                <div class="guia-olhos"></div>
-                                <div class="guia-boca"></div>
-                            </div>
-                            <div class="guia-instrucao">
-                                <span id="guiaEmoji">🙂</span>
-                                <strong id="guiaTitulo">Centralize o rosto</strong>
-                                <span id="guiaDica">Olhe de frente e mantenha boa iluminação</span>
-                                <span id="guiaStatus">Calibrando rosto neutro...</span>
-                                <div class="guia-progresso"><div id="guiaBarra"></div></div>
-                            </div>
-                        </div>
-
                         <div id="targetOverlay" class="desafio-inicial-card hidden">
                             <div class="desafio-inicial-conteudo">
                                 <span class="desafio-inicial-kicker">DESBLOQUEIE A PARTIDA</span>
                                 <div id="targetEmoji" class="desafio-inicial-emoji">🎯</div>
                                 <div id="targetName" class="desafio-inicial-titulo">EXPRESSÃO ALVO</div>
                                 <div id="targetDica" class="desafio-inicial-dica">Faça a expressão indicada</div>
-                                <div class="desafio-inicial-meta"><span>SEGURE A CARETA</span><span id="targetTime">0/2s</span></div>
+                                <div class="desafio-inicial-meta"><span>SEGURE A CARETA</span><span id="targetTime">0/5s</span></div>
                                 <div class="desafio-inicial-trilho"><div id="targetBar"></div></div>
+                            </div>
+                        </div>
+
+                        <div id="acaoOverlay" class="acao-camera-card hidden">
+                            <div class="acao-camera-conteudo">
+                                <span class="acao-camera-kicker">DESAFIO DE CÂMERA</span>
+                                <div id="acaoEmoji" class="acao-camera-emoji">👉</div>
+                                <p id="acaoTexto" class="acao-camera-titulo">FAÇA O GESTO</p>
+                                <div id="acaoStatus" class="acao-camera-status">⏳ Aguardando ação...</div>
+                                <div class="acao-camera-meta"><span>PROGRESSO</span><span id="acaoTempo">⏱️ --:--</span></div>
+                                <div class="acao-camera-trilho"><div id="acaoProgresso"></div></div>
                             </div>
                         </div>
                         
@@ -360,10 +356,26 @@
         </div>
 
         <div class="text-center mt-6 text-gray-400 text-sm">
-            <p>Desenvolvido com ❤️ usando TensorFlow.js + FaceMesh</p>
+            <p>Desenvolvido com ❤️ usando MediaPipe Face Landmarker</p>
         </div>
     </div>
      
+    <!-- Ordem intencional: scripts clássicos compartilham o estado sem bundler. -->
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/vision.js"></script>
+    <script src="js/vision-fallback.js"></script>
+    <script src="js/vision-runtime.js"></script>
+    <script src="js/timer.js"></script>
+    <script src="js/questions.js"></script>
+    <script src="js/bomb.js"></script>
+    <script src="js/dice.js"></script>
+    <script src="js/math.js"></script>
+    <script src="js/stroop.js"></script>
+    <script src="js/actions.js"></script>
     <script src="js/game.js"></script>
 
     <!-- ÁUDIOS -->
