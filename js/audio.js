@@ -6,17 +6,17 @@ let timerAudioElement = null;
 let resultadoAudioElement = null;
 let ultimoTimerAudio = '';
 let ultimoResultadoAudio = '';
-const TIMER_AUDIOS = ['assets/timerAudio.wav', 'assets/timerAudio2.mp3', 'assets/timerAudio3.mp3'];
+const TIMER_AUDIOS = ['assets/timerAudio.wav', 'assets/timerAudio2.mp3', 'assets/timerAudio3.mp3','assets/timerAudio4.mp3'];
 const AUDIOS_VITORIA = [
     'audios_vitoria/acabou.mp3', 'audios_vitoria/ai-que-delicia-mickey.mp3',
     'audios_vitoria/bora-bill.mp3',
     'audios_vitoria/comedy-male-yelling-yee-ha-sound-effects-free-download-mp3cut.mp3',
-    'audios_vitoria/hmmmm-eu-gosto-e-assim-amostradinho_043431.mp3'
+    'audios_vitoria/hmmmm-eu-gosto-e-assim-amostradinho_043431.mp3','efeitos-sonoros-brasil-sil-sil-rede-globo.mp3'
 ];
 const AUDIOS_DERROTA = [
     'audios_derrota/apaga-essa-peste-ai_092732.mp3', 'audios_derrota/faaah_203440.mp3',
     'audios_derrota/nao-consegue-ne_233542.mp3',
-    'audios_derrota/que-show-da-xuxa-e-esse_035822.mp3'
+    'audios_derrota/que-show-da-xuxa-e-esse_035822.mp3','deus-me-perdoe-fake-natty-1.mp3'
 ];
 
 function sortearSemRepetir(lista, ultimo) {
