@@ -10,7 +10,8 @@ O reconhecimento acontece diretamente no navegador. A câmera não é transmitid
 - Reconhecimento facial por 52 blendshapes do MediaPipe Face Landmarker.
 - Reconhecimento treinado dos gestos de joia, paz e mão aberta com MediaPipe Gesture Recognizer.
 - Rastreamento temporal para estabilizar expressões e evitar falsos positivos.
-- Três configurações de duração e campo de tempo personalizado.
+- Categorias fixas de 15, 30 e 60 segundos.
+- Ranking local separado por categoria, guardando o melhor tempo de cada jogador.
 - Pontuação, combos e níveis de dificuldade automáticos.
 - Efeitos sonoros de suspense, vitória e derrota.
 - Captura local dos melhores momentos da partida, com opção de reprodução e download.
@@ -106,6 +107,7 @@ timer/
 │   ├── game.js             # Fluxo, reinício e inicialização da partida
 │   ├── math.js             # Desafio de memória matemática
 │   ├── questions.js        # Perguntas e fluxo de derrota
+│   ├── ranking.js          # Ranking persistido no navegador
 │   ├── state.js            # Estado compartilhado da aplicação
 │   ├── stroop.js           # Teste de Stroop
 │   ├── timer.js            # Cronômetro e progresso das expressões
@@ -138,6 +140,7 @@ Se o Face Landmarker não puder ser carregado, o projeto tenta ativar o detector
 - O vídeo é processado localmente no dispositivo.
 - O projeto não possui backend para receber imagens da câmera.
 - Os melhores momentos permanecem na memória do navegador durante a sessão.
+- Nome e melhores tempos do ranking ficam salvos no `localStorage` do navegador.
 - Um arquivo só é salvo quando o jogador escolhe explicitamente a opção de download.
 - O microfone não é solicitado.
 
@@ -148,7 +151,7 @@ O projeto já possui um `vercel.json` configurado. Ao importar o repositório na
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
 
-A Vercel fornece HTTPS automaticamente, requisito necessário para a câmera em produção. O arquivo de configuração também limita a política de permissões da câmera ao próprio site e desativa o microfone.
+A Vercel fornece HTTPS automaticamente, requisito necessário para a câmera em produção.
 
 ## Solução de problemas
 

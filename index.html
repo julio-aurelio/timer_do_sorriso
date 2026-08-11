@@ -322,16 +322,6 @@
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">
-                                Tempo Personalizado
-                            </label>
-                            <div class="flex gap-2">
-                                <input type="number" id="customTime" value="30" min="1" max="3600" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                <span class="flex items-center text-gray-500 text-sm">s</span>
-                            </div>
-                        </div>
-
                         <button onclick="iniciarTimer()" id="btnIniciar" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all">
                             🎮 Iniciar Jogo
                         </button>
@@ -340,6 +330,24 @@
                             ⏹️ Parar
                         </button>
                     </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-xl p-5 card">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <h2 id="rankingTitulo" class="text-lg font-bold text-gray-800">🏆 Ranking 30s</h2>
+                        <span class="text-[10px] font-bold uppercase tracking-wide text-gray-400">Neste navegador</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Menor tempo para concluir todos os desafios.</p>
+                    <label for="playerName" class="block text-sm font-bold text-gray-700 mb-1">
+                        Seu nome no ranking
+                    </label>
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" id="playerName" maxlength="18" autocomplete="nickname" class="min-w-0 flex-1 px-3 py-2 border-2 border-purple-200 rounded-lg outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200" placeholder="Digite seu nome">
+                        <button type="button" onclick="salvarNomeRanking()" class="shrink-0 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-sm transition">
+                            Salvar
+                        </button>
+                    </div>
+                    <ol id="rankingLista"></ol>
                 </div>
 
                 <!-- Mensagem -->
@@ -362,6 +370,7 @@
     <script src="js/config.js"></script>
     <script src="js/state.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/ranking.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/camera.js"></script>
     <script src="js/vision.js"></script>

@@ -85,14 +85,7 @@ function atualizarCardExpressaoInicial() {
 }
 
 function obterTempoSelecionado() {
-    const input = document.getElementById('customTime');
-    const tempo = validarTempo(input?.value);
-    tempoSelecionado = tempo;
-    if (input) {
-        input.value = String(tempo);
-        input.setCustomValidity('');
-    }
-    return tempo;
+    return validarTempo(tempoSelecionado);
 }
 
 function normalizarResposta(valor) {
@@ -106,11 +99,11 @@ function normalizarResposta(valor) {
 
 function setTimer(segundos) {
     tempoSelecionado = validarTempo(segundos);
-    document.getElementById('customTime').value = tempoSelecionado;
     document.querySelectorAll('.btn-tempo').forEach(btn => {
         btn.classList.remove('border-blue-500', 'bg-blue-50');
     });
     document.querySelector(`.btn-tempo[data-tempo="${tempoSelecionado}"]`)?.classList.add('border-blue-500', 'bg-blue-50');
+    atualizarRankingUI(tempoSelecionado);
 }
 
 function iniciarTimerReal() {

@@ -107,6 +107,8 @@ function encerrarPorTempo() {
 
 function finalizarJogo() {
     console.log('🏆 VITÓRIA FINAL!');
+    const duracao = Math.max(0.001, (Date.now() - state.tempo_inicio) / 1000);
+    const resultadoRanking = registrarResultadoRanking(state.tempo_total, duracao, state.pontuacao);
     mostrarVitoriaFinalUI();
     pararCapturasMelhoresMomentos();
     esconderComando();
@@ -117,7 +119,11 @@ function finalizarJogo() {
     state.timer_ativo = false;
     state.etapa = "FINALIZADO";
     const resultado = document.getElementById('resultadoFinal');
-    if (resultado) resultado.textContent = `${state.pontuacao.toLocaleString('pt-BR')} pontos · ${state.dificuldade}`;
+    if (resultado) {
+        const colocacao = resultadoRanking?.posicao ? ` · ${resultadoRanking.posicao}º no ranking` : '';
+        const recorde = resultadoRanking?.novoRecorde ? ' · NOVO RECORDE!' : '';
+        resultado.textContent = `${formatarTempoRanking(duracao)} · ${state.pontuacao.toLocaleString('pt-BR')} pontos${colocacao}${recorde}`;
+    }
     atualizarStatusUI();
     mostrarMensagem('🏆', 'VOCÊ VENCEU!', `${state.desafios.length} desafios concluídos no nível ${state.dificuldade}!`);
     setTimeout(mostrarMelhoresMomentos, 1800);
@@ -262,12 +268,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    document.getElementById('customTime').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') iniciarTimer();
-    });
-    document.getElementById('customTime').addEventListener('change', function() {
-        this.value = obterTempoSelecionado();
-    });
     document.getElementById('respostaInputOverlay').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') enviarRespostaOverlay();
     });
@@ -275,6 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.key === 'Enter') enviarRespostaMatematica();
     });
 
+    inicializarRanking();
     setTimer(CONFIG.TEMPO_PADRAO);
     console.log('✅ Aplicação inicializada com sucesso!');
 });
